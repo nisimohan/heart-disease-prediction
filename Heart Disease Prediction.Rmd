@@ -1,0 +1,884 @@
+---
+title: "What are the important risk factors that can predict heart disease? and Can we effectively cluster heart disease patients to identify similar patients which can provide insights for treatment plan?"
+author: "Nisi Mohan K"
+date: "21/12/2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(cache = FALSE)
+```
+
+
+```{r, echo=FALSE, cache=FALSE}
+library(foreign)
+library(stringr)
+library(GGally)
+library(ggplot2)
+library(graphics)
+library(dplyr)
+library(caret)
+library(rpart)
+library(ROSE)
+
+```
+
+
+# Synopsis
+
+Cardiovascular diseases(CVD's) are one the most lethal diseases in the world. World Health Organization(WHO) had published a report in 2017 stating that over 17.9 million people die from cardiovascular diseases each year ranking it the number 1 cause of death globally(WHO, 2017). Because of this, understanding different factors contributing to the development of CVD and building accurate models to predict the risk of patients has been an active area of research. Over the years, there has been a flood of publications analyzing the connection between different lifestyle choices and cardio vascular diseases. However, there is still a lot to be understood about this deadly disease. Efficient models that can precisely predict the probability of a patient developing CVD within the next several years will have major benefits. Doctors will be able to administer a more effective treatment plan for the patients with high risk which will in turn bring down the death rate significantly. This project aims to research these possibilities by applying classification algorithms such as logistic regression and decision trees on the Farmingham Heart Study dataset to predict the probability of a patient developing CVD in the next 10 years considering several lifestyle factors and some routine test results. It also explores whether the patients identified as high risk can be clustered into groups so that similar treatment options can be planned for patients in the same group.
+
+
+# Source
+
+The Framingham heart study dataset is taken from the edX platform. Framingham heart study is an ongoing cohort study of the people from the city of Framingham, Massachusetts. It is one of the key research studies in history that shed a lot of light on understanding the factors of CVD. The dataset available on the edX platform provides the patients’ information from this longitudinal study containing repeated observations of over 17 variables. It includes over 4,000 records.
+
+
+
+### Variables Explanation
+
+The variable explanation is extracted from the dataset by selecting *var.labels* to understand each column's labels before jumping to cleansing and analyzing the data.
+
+
+1. Sex: gender of the patient
+2. Age: in years
+3. CurSmoke: whether or not the patient is a current smoker
+4. cigpday: number of cigarettes patient smoked
+5. prevstrk: a history of stroke
+6. prevhyp: a history of hypertension
+7. bpmeds: Use of anti-hypertension medication
+8. heartrte: heart rate, beats per minute
+9. diabetes: the patient is having diabetes or not
+10. glucose: glucose level in the blood
+11. totchol: total cholesterol
+12. sysbp: systolic blood pressure
+13. diabp: diastolic blood pressure
+14. bmi: body mass index
+15. timecvd: risk of CVD in years
+
+
+# Analysis
+
+### Tidying Data
+
+
+The Framingham heart study dataset contains longitudinal data of patients' both behavioral features and features related to their medical history. The dataset also contains for each patient, how long it took for them to develop CVD. Because this is a dataset from a longitudinal study, it contains three measurements of some features of the same patient conducted at three different stages. For the analysis done as part of this project, only the measurements made at the first state is considered as it appeared to be more complete, along with that, multiple lifestyle features are also considered.
+
+
+First, categorical features are converted to dummy variables in order to train regression and decision tree classifiers as well as doing clustering. The dependent variable, that is whether the patient has a ten-year risk of developing CVD or not is computed from the _timecvd_ feature present in the dataset.
+
+
+In total, 562 NA's are found in the entire dataset. Considering it is only a small proportion of the dataset, These observations are omitted before performing the analysis. 
+
+
+
+```{r,echo=FALSE}
+heart_df <- read.dta("C:/Users/nisik/Downloads/handouts_fhs.dta")
+#head(heart_df)
+
+```
+
+
+
+```{r,echo=FALSE}
+
+
+heart_df <- heart_df[, c("sex1", "age1","cursmoke1","cigpday1","prevstrk1","prevhyp1", "bpmeds1", "heartrte1","diabetes1","glucose1","totchol1", "sysbp1", "diabp1", "bmi1","timecvd")]
+
+#head(heart_df)
+
+```
+
+
+
+```{r,echo=FALSE}
+
+
+
+heart_df$male <- ifelse(heart_df$sex1=="Male",1,0)
+heart_df$currentSmoker <- ifelse(heart_df$cursmoke1=="Yes",1,0)
+heart_df$prevalentStroke <- ifelse(heart_df$prevstrk1=="Yes",1,0)
+heart_df$prevalentHypTension <- ifelse(heart_df$prevhyp1=="Yes",1,0)
+heart_df$BPMeds <- ifelse(heart_df$bpmeds1=="Yes",1,0)
+heart_df$diabetes <- ifelse(heart_df$diabetes1=="Yes",1,0)
+
+#head(heart_df)
+
+```
+
+
+```{r,echo=FALSE}
+
+heart_df <- heart_df[, c("male","age1","currentSmoker","cigpday1","prevalentStroke","prevalentHypTension","BPMeds","heartrte1",
+                         "diabetes","glucose1","totchol1","sysbp1","diabp1","bmi1","timecvd")]
+#head(heart_df)
+
+```
+```{r,echo=FALSE}
+#sum(is.na(heart_df))
+heart_df<-na.omit(heart_df)
+#sum(is.na(heart_df))
+```
+
+
+```{r,echo=FALSE}
+
+heart_df <- dplyr::rename(heart_df,"age"="age1","cigsPerDay" ="cigpday1", "heartRate"="heartrte1", "glucose"="glucose1","totCholestrol"="totchol1","sysBP"="sysbp1","diaBP"="diabp1", "BMI"="bmi1","TenYearCVD"="timecvd")
+
+```
+
+```{r,echo=FALSE}
+
+
+heart_df$TenYearCVD<-ifelse(heart_df$TenYearCVD < 10, 1,0)
+
+#head(heart_df)
+
+```
+
+
+### Exploratory Data Analysis
+
+
+Exploratory data analysis helps to understand the relationships between independent variables and the target variable. First, some of the continuous variables in the dataset and their connection with the dependent variable are analyzed. Starting with the feature age, A box plot is used to visualize the distribution of age between the different classes of the target variable. As expected, it is evident from the plot that older people are at a higher risk of developing CVD in the next 10 years.
+
+
+
+```{r,echo=FALSE}
+
+
+
+boxplot(heart_df$age[heart_df$TenYearCVD==0],
+        heart_df$age[heart_df$TenYearCVD==1],
+        names= c(0,1),
+        main = "Relationship between Age and TenYearCVD",
+        xlab = "TenYearCVD",
+        ylab = "Age",
+        col = "dark blue"
+       
+        )
+
+
+```
+
+
+The second boxplot is used to see if smoking cigarettes has any effect on cardiovascular disease. The data contains _cigsPerDay_ columns which give the average number of cigarettes a patient smoke per day. This variable is plotted against the target variable, there seems to be no distinct difference between the two boxplots. Therefore, it cannot be concluded from this plot that there is a relationship between _cigsPerday_ and _TenYearCVD_.
+
+
+
+```{r,echo=FALSE}
+boxplot(heart_df$cigsPerDay[heart_df$TenYearCVD==0],
+        heart_df$cigsPerDay[heart_df$TenYearCVD==1],
+        names= c(0,1),
+        main = "Relationship between cigperday and TenYearCVD",
+        xlab = "TenYearCVD",
+        ylab = "cigperday",
+        col = "dark blue"
+      
+        )
+
+```
+
+
+Next, some of the categorical features in the dataset are analyzed against the positive class. Variables such as *gender* and *current_smoker* are visualized against target variable _TenYearCVD_. The below bar chart shows whether gender is a factor in predicting 10-year risk to CVD. The plot suggests that men have a higher risk of heart disease compared to women.
+
+```{r,echo=FALSE}
+gender_df <- heart_df[,c("male", "TenYearCVD")]
+gender_df$gender <- ifelse(gender_df$male == 1, "Male", "Female")
+ggplot(gender_df, aes(x=as.factor(gender),y=TenYearCVD )) + 
+  geom_bar(stat="identity", width=.1, fill="dark blue") + 
+  labs(
+    title="Gender and TenYearCVD",
+    subtitle="",
+    x="Gender", 
+    y="TenYearCVD"
+   )
+ 
+
+```
+
+
+The second bar plot is to check if any relationship exists between whether a patient is a current smoker and the 10-year risk. Surprisingly, The plot does not show a significant association between _currentSmoker_ and _TenYearCVD_.
+
+
+```{r,echo=FALSE}
+curr_smoker_df <- heart_df[,c("currentSmoker", "TenYearCVD")]
+curr_smoker_df$currentSmoker <- ifelse(curr_smoker_df$currentSmoker == 1, "Yes", "No")
+ggplot(curr_smoker_df, aes(x=as.factor(currentSmoker),y=TenYearCVD )) + 
+  geom_bar(stat="identity", width=.1, fill="dark blue") + 
+  labs(
+    title="currentSmoker distribution",
+    subtitle="",
+    xlabs=c("False", "True"),
+    x="currentSmoker", 
+    y="TenYearCVD"
+   )
+ 
+
+```
+
+
+## Modeling
+
+The next step is to perform logistic regression on all the 14 variables in the dataset to gather better insights into different features in the dataset and their relationship with the target variable. Summary of the regression can be used to interpret the factors that have a significant influence on the prediction of 10-year risk in CVD.
+
+To effectively evaluate the regression model trained, the dataset needs to be partitioned as train and test data. 80% of the dataset is used for training and the rest is used for testing and evaluating the trained model. Since this is an imbalanced classification problem, the minority class in the training data is oversampled to make the classifiers pay equal attention to both the classes. At last, a confusion matrix is used on test data predictions to understand different aspects of model performance such as precision, recall, etc.
+
+
+
+
+
+### Logistic Regression
+
+
+
+```{r,echo=FALSE}
+
+set.seed(42)
+TrainingIndex <- createDataPartition(y=heart_df$TenYearCVD, p=0.80, list=FALSE)
+training <- heart_df[TrainingIndex,]
+testing <- heart_df[-TrainingIndex,]
+
+
+
+```
+
+
+```{r,echo=FALSE}
+
+data_balanced_over <- ovun.sample(TenYearCVD ~ ., data = training, method = "over",N = 2572*2)$data
+#table(data_balanced_over$TenYearCVD)
+
+```
+
+
+```{r,echo=FALSE}
+
+
+heart_Lg<- glm(formula =  TenYearCVD ~ male + age + currentSmoker + 
+    cigsPerDay + prevalentStroke + prevalentHypTension + BPMeds + heartRate + diabetes + glucose + totCholestrol + sysBP + diaBP + BMI, family = binomial, data = data_balanced_over)
+
+
+summary(heart_Lg)
+
+```
+
+
+
+```{r,echo=FALSE}
+
+heartCVDPredict <- predict(heart_Lg, newdata = testing, type="response")
+glm.pred <- ifelse(heartCVDPredict > 0.5, 1, 0)
+
+#confusionMatrix(as.factor(glm.pred), as.factor(testing$TenYearCVD))
+
+
+```
+
+
+
+
+First, a multiple logistic regression model is trained using all the features in the dataset to predict the 10-year risk of CVD and checked how well the classifier model performs on correctly predicting the target variable.
+
+
+
+From the summary of the regression model, it is apparent that _male_, _age_, _cigsPerDay_, _prevalentHypTension_, _glucose_, and _sysBP_ has a high significance in predicting the _TenYearCVD_.
+These factors are significant at $\alpha$ 0.001. Other features do not seem to have much significance in the prediction of CVD.
+
+
+Furthermore, deviance in the summary is a measure of goodness of fit of the regression model. The null deviance of this model is 7130.9 on 5143 degrees of freedom. Null deviance shows how well the target variable is predicted with a model using only the intercept, whereas residual deviance shows how well the target variable is predicted with a model that uses all the predictors. For this model, residual deviance is 5877.2 on 5129 degrees of freedom, which is far less than the null deviance. This indicates that the goodness of fit is higher when the predictors are included in the regression model.
+
+
+
+
+                FALSE         TRUE
+-----------   ------------  --------       
+      0            458          43
+      1            189          95         
+      
+
+
+
+The confusion matrix above gives a distribution of the actual values and its respected predictions. 458 is the number of patients who are correctly predicted as having no risk of developing CVD in the next 10 years (70.08% accuracy) and 95 is the number of patients which the model correctly predicted to have a risk of developing CVD in the next 10 years (68.84% accuracy). Rest are Type 1 and Type 2 errors in the prediction. Overall, the model is 70.45% accurate in predicting _TenYearCVD_.
+
+From this model, it is clear that only six factors have a significant influence on predicting the risk of CVD in 10- years. So in the next step, another logistic regression model is trained by removing the least significant features and these two models are compared in terms of accuracy.
+
+
+
+```{r,echo=FALSE}
+
+
+heart_LgSignificant<- glm(formula =  TenYearCVD ~ male + age +  
+    cigsPerDay +  prevalentHypTension + glucose + sysBP , family = binomial, data = data_balanced_over)
+
+
+summary(heart_LgSignificant)
+
+```
+
+
+
+
+```{r,echo=FALSE}
+
+heartCVDPredict <- predict(heart_LgSignificant, newdata = testing, type="response")
+glm.pred <- ifelse(heartCVDPredict > 0.5, 1, 0)
+
+#confusionMatrix(as.factor(glm.pred), as.factor(testing$TenYearCVD))
+
+
+```
+
+Above is the simplified model by removing the least significant variables from the previous model. It is visible from the summary that there is not much change in the deviance when compared to the previous complex model. All the features used in the model are significant at $\alpha$ 0.001.
+
+
+
+
+
+
+                FALSE         TRUE
+-----------   ------------  --------       
+      0            449          40
+      1            198          98   
+      
+
+
+The confusion matrix of the simplified model shows a slight difference in the prediction of CVD risk in 10 years compared to the previous model. This model has slightly higher false positives and slightly lower false negatives than the earlier model. The total accuracy of the model has come down by approximately 1%, which is not a big difference.
+
+
+In conclusion, when comparing these two models, the second model seems to be better since it is not complex and the accuracy of this model is approximately 69.68% which is almost the same as the first model.
+
+
+
+
+\newpage
+
+
+### Decision Tree
+
+
+Next, A different classification algorithm is explored to check if it can produce better performance than the logistic regression model on the same dataset. Decision tree classifiers are trained to predict the 10-year risk of CVD in patients. The same oversampled training set used in the logistic regression modeling is used here to develop the decision tree model. 
+
+
+
+```{r,echo=FALSE}
+
+
+
+ctfull <- rpart(TenYearCVD ~  male + age +
+    cigsPerDay +glucose + sysBP+ prevalentHypTension, data = data_balanced_over, method = "class",
+                parms = list(split = "information"),
+                control = rpart.control(minsplit = 0, minbucket = 1, cp=0.00001),
+                model = TRUE, usesurrogate = 0, maxsurrogate = 0)
+
+#summary(ctfull)
+
+
+```
+
+
+
+
+
+```{r,echo=FALSE}
+
+ctPred <- predict(ctfull, newdata = testing, type = "class")
+#confusionMatrix(as.factor(ctPred), as.factor(testing$TenYearCVD) )
+
+```
+
+                FALSE         TRUE
+-----------   ------------  --------       
+      0            536          92
+      1            111          46   
+
+
+The same features which were used in the second model of logistic regression are considered here to perform the classification. From the confusion matrix, it is clear that there are 536 true negative and 46 true positives. False-negative is a bit higher here compared to the logistic regression model. However, the overall accuracy has increased using decision tree classification. The accuracy of this model is around 74.14% which is significantly higher compared to the regression, which was 69.68%. But since the decision tree model yields higher false negatives, and classifying a patient who actually has a risk of developing CVD in the next 10 years as low risk is more dangerous, the best model in this scenario would be the logistic regression model.  
+
+
+
+
+### Clustering high risk patients.
+
+Next, the space of unsupervised learning algorithms are explored to check the possibility of finding similar patients who are already identified as high risk of developing CVD in the next 10 years. Being able to group patients into clusters will help the doctors manage and plan similar treatment effectively.
+
+Here, a clustering algorithm called k-means clustering is used to find potential clusters among the high-risk patients in the dataset.
+
+Since k-means clustering is a distance-based clustering algorithm, the data needs to be properly scaled before applying the algorithm. Data is extracted from _heart_df_ based on the condition **TenYearCVD equal to 1**, which is the data of patients who are likely to have a 10-year risk of cardiovascular disease.
+
+
+Also, since the k-means algorithm starts off with random cluster centroids and then assign data points to the centroids. In order to make sure the clusters produced by the algorithm are robust, it is advised to run the algorithm for multiple iterations keeping different random seeds. Therefore, here, two iterations of K-means clustering are performed.
+
+
+First iteration of K-means clustering resulted with 6 clusters with sizes {50, 136, 46, 151, 175, 134}, the second iteration of clustering resulted with 6 clusters of sizes {50, 157, 131, 138, 170, 46}. These two are distributed almost equally. Now, visualization can be used to show that similar observations are grouped into the same cluster in both the iterations suggesting that the clustering is robust.
+
+Scatter plots are used to visualize observations in the dataset that grouped into the same cluster in both iterations of the algorithm. Features age and _totCholestrol_ is plotted of cluster 2 of the first iteration and cluster 3 of the second iteration. Looking at the plots it is clear same observations are grouped together in both the iterations.
+
+So, a conclusion can be made that clusters are formed based on some underlying patterns and characteristics of patients in the dataset. These clusters can be further studied by doctors to gain more insights into the similarities between patients.
+
+
+
+
+```{r,echo=FALSE}
+heart_clusterdf <- heart_df[heart_df$TenYearCVD ==1,]
+heart_clusterdf<-heart_clusterdf[,-15]
+#heart_clusterdf
+
+```
+
+
+
+
+```{r,echo=FALSE}
+
+scaled_df <-as.data.frame(scale(heart_clusterdf))
+#head(scaled_df)
+
+```
+
+
+
+```{r,echo=FALSE}
+set.seed(42)
+heart_cluster <- kmeans(scaled_df, centers = 6, nstart = 1)
+#heart_cluster$size
+
+```
+
+```{r,echo=FALSE}
+set.seed(10)
+heart_cluster1 <- kmeans(scaled_df, centers = 6, nstart = 1)
+#heart_cluster1$size
+
+```
+
+
+
+```{r,echo=FALSE}
+
+heart_clusterdf[, "heart_cluster"] <- heart_cluster$cluster
+heart_clusterdf[,"heart_cluster1"] <- heart_cluster1$cluster
+
+
+```
+
+
+```{r,echo=FALSE}
+
+plot_one  <- ggplot(heart_clusterdf[heart_clusterdf$heart_cluster==2,], aes(x = age, y = totCholestrol, color = as.factor(heart_cluster))) + 
+   geom_point()
+plot_one 
+
+
+```
+
+
+
+```{r,echo=FALSE}
+
+plot_two  <- ggplot(heart_clusterdf[heart_clusterdf$heart_cluster1==3,], aes(x = age, y = totCholestrol, color = as.factor(heart_cluster1))) + 
+   geom_point()
+plot_two
+
+
+```
+
+
+
+
+## Conclusion
+
+This project examined the different factors associated with cardiovascular diseases using both supervised learning and unsupervised learning techniques on the Framingham Heart Study dataset. A fairly accurate and useful classification model was built using Logistic Regression that classifies patients with a 10-year risk of CVD. Also, the possibilities for finding hidden patterns in the high-risk patient data are explored using k-means clustering and found that it is possible to come up with robust clusters of patients.
+
+
+
+
+\newpage
+
+
+
+
+# Appendix 1: Methodology
+
+
+
+
+ Load the dataset
+
+
+    ```{r}
+heart_df <- read.dta("C:/Users/nisik/Downloads/handouts_fhs.dta")
+head(heart_df)
+```
+
+```{r}
+attributes(heart_df)["var.labels"]
+```
+
+
+
+
+```{r}
+
+
+heart_df <- heart_df[, c("sex1", "age1","cursmoke1","cigpday1","prevstrk1","prevhyp1", "bpmeds1", "heartrte1","diabetes1","glucose1","totchol1", "sysbp1", "diabp1", "bmi1","timecvd")]
+
+head(heart_df)
+
+```
+
+handling categorical variables to dummy 
+
+```{r}
+
+
+
+heart_df$male <- ifelse(heart_df$sex1=="Male",1,0)
+heart_df$currentSmoker <- ifelse(heart_df$cursmoke1=="Yes",1,0)
+heart_df$prevalentStroke <- ifelse(heart_df$prevstrk1=="Yes",1,0)
+heart_df$prevalentHypTension <- ifelse(heart_df$prevhyp1=="Yes",1,0)
+heart_df$BPMeds <- ifelse(heart_df$bpmeds1=="Yes",1,0)
+heart_df$diabetes <- ifelse(heart_df$diabetes1=="Yes",1,0)
+
+#head(heart_df)
+
+```
+
+
+
+```{r}
+
+heart_df <- heart_df[, c("male","age1","currentSmoker","cigpday1","prevalentStroke","prevalentHypTension","BPMeds","heartrte1",
+                         "diabetes","glucose1","totchol1","sysbp1","diabp1","bmi1","timecvd")]
+#head(heart_df)
+
+```
+
+
+```{r}
+
+heart_df <- dplyr::rename(heart_df,"age"="age1","cigsPerDay" ="cigpday1", "heartRate"="heartrte1", "glucose"="glucose1","totCholestrol"="totchol1","sysBP"="sysbp1","diaBP"="diabp1", "BMI"="bmi1","TenYearCVD"="timecvd")
+head(heart_df)
+```
+
+
+There are very less NA's in the dataset so we remove the NA rows.
+
+```{r}
+sum(is.na(heart_df))
+heart_df<-na.omit(heart_df)
+sum(is.na(heart_df))
+```
+
+
+timecvd is the years to happen cvd, we are checking in 10 years the chance of getting cvd based on the test factors and behavioural factors.
+
+```{r}
+
+
+heart_df$TenYearCVD<-ifelse(heart_df$TenYearCVD < 10, 1,0)
+
+head(heart_df)
+
+```
+
+
+### Visualization for exploratory data analysis
+
+boxplot to visualize  age against tenyearcvd
+
+
+```{r}
+
+
+
+boxplot(heart_df$age[heart_df$TenYearCVD==0],
+        heart_df$age[heart_df$TenYearCVD==1],
+        names= c(0,1),
+        main = "Relationship between Age and TenYearCVD",
+        xlab = "TenYearCVD",
+        ylab = "Age",
+        col = "dark blue"
+       
+        )
+
+
+```
+
+
+
+```{r}
+boxplot(heart_df$cigsPerDay[heart_df$TenYearCVD==0],
+        heart_df$cigsPerDay[heart_df$TenYearCVD==1],
+        names= c(0,1),
+        main = "Relationship between cigperday and TenYearCVD",
+        xlab = "TenYearCVD",
+        ylab = "cigperday",
+        col = "dark blue"
+      
+        )
+
+```
+
+bar distribution to show the relationship between gender and TenYearCVD
+
+
+
+```{r}
+
+gender_df <- heart_df[,c("male", "TenYearCVD")]
+gender_df$gender <- ifelse(gender_df$male == 1, "Male", "Female")
+ggplot(gender_df, aes(x=as.factor(gender),y=TenYearCVD )) + 
+  geom_bar(stat="identity", width=.1, fill="dark blue") + 
+  labs(
+    title="Gender and TenYearCVD",
+    subtitle="",
+    x="Gender", 
+    y="TenYearCVD"
+   )
+ 
+
+```
+
+
+
+bar distribution to show the correlation between smoking and 10 year risk.
+
+```{r}
+
+
+curr_smoker_df <- heart_df[,c("currentSmoker", "TenYearCVD")]
+curr_smoker_df$currentSmoker <- ifelse(curr_smoker_df$currentSmoker == 1, "Yes", "No")
+ggplot(curr_smoker_df, aes(x=as.factor(currentSmoker),y=TenYearCVD )) + 
+  geom_bar(stat="identity", width=.1, fill="dark blue") + 
+  labs(
+    title="currentSmoker distribution",
+    subtitle="",
+    xlabs=c("False", "True"),
+    x="currentSmoker", 
+    y="TenYearCVD"
+   )
+ 
+
+```
+
+
+
+### Logistic regression 
+
+
+```{r,echo=FALSE}
+# cat_cols = c("male", "currentSmoker", "prevalentStroke", "prevalentHypTension", "BPMeds", "diabetes")
+# 
+# for(c in cat_cols){
+#   heart_df[c] <- lapply(heart_df[c], factor)
+# }
+```
+
+
+
+
+```{r}
+
+set.seed(42)
+TrainingIndex <- createDataPartition(y=heart_df$TenYearCVD, p=0.80, list=FALSE)
+training <- heart_df[TrainingIndex,]
+testing <- heart_df[-TrainingIndex,]
+
+table(training$TenYearCVD)
+
+```
+
+
+```{r}
+
+data_balanced_over <- ovun.sample(TenYearCVD ~ ., data = training, method = "over",N = 2572*2)$data
+table(data_balanced_over$TenYearCVD)
+
+```
+
+
+```{r}
+
+
+heart_Lg<- glm(formula =  TenYearCVD ~ male + age + currentSmoker + 
+    cigsPerDay + prevalentStroke + prevalentHypTension + BPMeds + heartRate + diabetes + glucose + totCholestrol + sysBP + diaBP + BMI, family = binomial, data = data_balanced_over)
+
+
+summary(heart_Lg)
+
+```
+
+
+
+
+
+
+
+```{r}
+
+heartCVDPredict <- predict(heart_Lg, newdata = testing, type="response")
+glm.pred <- ifelse(heartCVDPredict > 0.5, 1, 0)
+
+confusionMatrix(as.factor(glm.pred), as.factor(testing$TenYearCVD))
+
+
+```
+
+
+Removing variables which does not have much significance in predicting 10 year CVD
+
+```{r,echo=FALSE}
+
+
+heart_LgSignificant<- glm(formula =  TenYearCVD ~ male + age +  
+    cigsPerDay +  prevalentHypTension + glucose +  sysBP , family = binomial, data = data_balanced_over)
+
+
+summary(heart_LgSignificant)
+
+```
+
+
+
+
+
+
+```{r}
+
+heartCVDPredictN<- predict(heart_LgSignificant, newdata = testing, type="response")
+glm.pred <- ifelse(heartCVDPredictN > 0.5, 1, 0)
+
+confusionMatrix(as.factor(glm.pred), as.factor(testing$TenYearCVD))
+
+
+```
+
+
+
+
+
+### Decision trees 
+
+
+
+
+
+```{r}
+
+
+
+ctfull <- rpart(TenYearCVD ~  male + age +
+    cigsPerDay +glucose + sysBP, data = data_balanced_over, method = "class",
+                parms = list(split = "information"),
+                control = rpart.control(minsplit = 0, minbucket = 1, cp=0.00001),
+                model = TRUE, usesurrogate = 0, maxsurrogate = 0)
+
+#summary(ctfull)
+
+
+```
+
+
+
+
+
+```{r}
+
+ctPred <- predict(ctfull, newdata = testing, type = "class")
+confusionMatrix(as.factor(ctPred), as.factor(testing$TenYearCVD) )
+
+```
+
+
+
+
+### clustering
+
+
+```{r}
+heart_clusterdf <- heart_df[heart_df$TenYearCVD ==1,]
+heart_clusterdf<-heart_clusterdf[,-15]
+#heart_clusterdf
+
+```
+
+
+
+```{r}
+
+
+scaled_df <-as.data.frame(scale(heart_clusterdf))
+head(scaled_df)
+
+
+
+```
+
+
+
+
+
+```{r}
+set.seed(42)
+heart_cluster <- kmeans(scaled_df, centers = 6, nstart = 1)
+heart_cluster$size
+```
+
+
+
+```{r}
+set.seed(10)
+heart_cluster1 <- kmeans(scaled_df, centers = 6, nstart = 1)
+heart_cluster1$size
+
+```
+
+
+
+
+```{r}
+
+heart_clusterdf[, "heart_cluster"] <- heart_cluster$cluster
+heart_clusterdf[,"heart_cluster1"] <- heart_cluster1$cluster
+
+
+```
+
+
+```{r}
+
+plot_one  <- ggplot(heart_clusterdf[heart_clusterdf$heart_cluster==2,], aes(x = age, y = totCholestrol, color = as.factor(heart_cluster))) + 
+   geom_point()
+plot_one 
+
+
+```
+
+
+```{r}
+
+plot_one  <- ggplot(heart_clusterdf[heart_clusterdf$heart_cluster1==3,], aes(x = age, y = totCholestrol, color = as.factor(heart_cluster1))) + 
+   geom_point()
+plot_one 
+
+
+```
+
+
+
+# Appendix 2: References
+
+
+1. Data is collected from https://courses.edx.org/courses/HarvardX/PH207x/2012_Fall/datasets/ 
+
+2. (2017). Retrieved from WHO: https://www.who.int/health-topics/cardiovascular-diseases/#tab=tab_1
+
+
+
+
+
+
+
