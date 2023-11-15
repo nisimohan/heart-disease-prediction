@@ -1,0 +1,33 @@
+---
+title: "DSCI300 Final Project Proposal"
+author: "Nisi Mohan"
+date: "20/11/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r, echo=FALSE, cache=TRUE}
+library(dplyr)
+library(e1071)
+library(gapminder)
+library(ggplot2)
+library(graphics)
+library(magrittr)
+library(plyr)
+library(purrr)
+library(tidyverse)
+library(TTR)
+```
+
+
+```{r}
+
+
+```
+
